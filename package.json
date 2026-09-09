@@ -1,0 +1,43 @@
+{
+  "name": "release-asset-mirror",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that mirrors a GitHub repository's Release assets on a domain you control, with R2 as a read-through cache.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/discobox-ai/release-asset-mirror.git"
+  },
+  "bugs": {
+    "url": "https://github.com/discobox-ai/release-asset-mirror/issues"
+  },
+  "homepage": "https://github.com/discobox-ai/release-asset-mirror#readme",
+  "scripts": {
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
+    "deploy": "wrangler deploy --env=\"\"",
+    "deploy:discobox": "wrangler deploy --env discobox",
+    "dev": "wrangler dev --env=\"\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260801.1",
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.0.0",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.118.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260730.1": true
+  }
+}

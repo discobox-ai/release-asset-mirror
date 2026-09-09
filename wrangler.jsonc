@@ -1,0 +1,96 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // ─── Shared by every deployment ─────────────────────────────────────────
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-31",
+  "observability": { "enabled": true },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Coordinator"],
+    },
+  ],
+
+  // ─── Default deployment (`npm run deploy`) ──────────────────────────────
+  // Configure a single mirror by editing this block. Everything a deployment
+  // needs is here: the Worker name, the repository it mirrors, the R2 bucket
+  // that caches assets, and the hostnames it answers on.
+  "name": "release-asset-mirror",
+  "vars": {
+    // The one required setting. Must be "owner/repository". Its strict
+    // validation is also what stops this Worker becoming an open proxy.
+    "GITHUB_REPOSITORY": "OWNER/REPOSITORY",
+
+    // How long a resolved `latest`/`prerelease` tag is trusted globally,
+    // and how long each edge location caches the resulting redirect.
+    "ALIAS_TTL_SECONDS": "60",
+    "EDGE_ALIAS_TTL_SECONDS": "60",
+
+    // Leave empty to stream assets through the Worker. Set to the HTTPS
+    // origin of a custom domain attached directly to the R2 bucket to
+    // redirect to R2 instead. See "Direct R2 delivery" in the README.
+    "R2_PUBLIC_BASE_URL": "",
+    "R2_REDIRECT_TTL_SECONDS": "3600",
+  },
+  "r2_buckets": [
+    {
+      "binding": "ASSETS",
+      "bucket_name": "release-asset-mirror",
+      "preview_bucket_name": "release-asset-mirror-dev",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COORDINATOR",
+        "class_name": "Coordinator",
+      },
+    ],
+  },
+
+  // Serve the mirror from your own hostname. Requires the zone to live in
+  // this Cloudflare account; Wrangler creates the DNS record and certificate.
+  // Add `"workers_dev": false` alongside it to serve *only* that hostname.
+  // "routes": [{ "pattern": "assets.example.com", "custom_domain": true }],
+
+  // ─── Additional deployments (`npm run deploy -- --env NAME`) ────────────
+  // One block per extra mirror. Wrangler does not inherit `vars`,
+  // `r2_buckets` or `durable_objects` into a named environment, so each one
+  // repeats them in full. `discobox` below is a live deployment kept here as
+  // a worked example — delete it in your own fork.
+  "env": {
+    "discobox": {
+      "name": "discobox-release-assets",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "assets.discobox.ai",
+          "custom_domain": true,
+        },
+      ],
+      "vars": {
+        "GITHUB_REPOSITORY": "ibuildthecloud/rv64.js",
+        "ALIAS_TTL_SECONDS": "60",
+        "EDGE_ALIAS_TTL_SECONDS": "60",
+        "R2_PUBLIC_BASE_URL": "",
+        "R2_REDIRECT_TTL_SECONDS": "3600",
+      },
+      "r2_buckets": [
+        {
+          "binding": "ASSETS",
+          "bucket_name": "discobox-release-assets",
+          "preview_bucket_name": "discobox-release-assets-dev",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "COORDINATOR",
+            "class_name": "Coordinator",
+          },
+        ],
+      },
+    },
+  },
+}
