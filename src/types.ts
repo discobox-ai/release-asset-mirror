@@ -4,7 +4,8 @@ export interface Env {
   GITHUB_TOKEN?: string;
   ALIAS_TTL_SECONDS: string;
   EDGE_ALIAS_TTL_SECONDS: string;
-  GITHUB_REPOSITORY: string;
+  /** Namespace -> "owner/repository". A JSON object, or that object encoded. */
+  REPOSITORIES: Record<string, string> | string;
   R2_PUBLIC_BASE_URL: string;
   R2_REDIRECT_TTL_SECONDS: string;
 }
@@ -27,5 +28,6 @@ export interface GitHubRelease {
 export interface FillRequest {
   asset: string;
   key: string;
+  namespace: string;
   tag: string;
 }

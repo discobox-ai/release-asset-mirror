@@ -18,9 +18,13 @@
   // that caches assets, and the hostnames it answers on.
   "name": "release-asset-mirror",
   "vars": {
-    // The one required setting. Must be "owner/repository". Its strict
-    // validation is also what stops this Worker becoming an open proxy.
-    "GITHUB_REPOSITORY": "OWNER/REPOSITORY",
+    // The one required setting: which repository each URL prefix mirrors, so
+    // that /{namespace}/{tag}/{asset} reaches the right releases. Add an entry
+    // per repository. Only names listed here are reachable, which is what
+    // stops this Worker becoming an open proxy.
+    "REPOSITORIES": {
+      "example": "OWNER/REPOSITORY",
+    },
 
     // How long a resolved `latest`/`prerelease` tag is trusted globally,
     // and how long each edge location caches the resulting redirect.
@@ -70,7 +74,10 @@
         },
       ],
       "vars": {
-        "GITHUB_REPOSITORY": "ibuildthecloud/rv64.js",
+        "REPOSITORIES": {
+          "discobox": "discobox-ai/discobox",
+          "rv64": "ibuildthecloud/rv64.js",
+        },
         "ALIAS_TTL_SECONDS": "60",
         "EDGE_ALIAS_TTL_SECONDS": "60",
         "R2_PUBLIC_BASE_URL": "",

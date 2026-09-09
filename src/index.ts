@@ -1,5 +1,6 @@
 import { Coordinator } from "./coordinator";
 import { downloadUrl, fetchLatestFromDownloadRedirect } from "./github";
+import { resolveRepository } from "./mirrors";
 import { asAlias, objectKey, parseAssetPath, versionedPath } from "./path";
 import { publicObjectRedirect, publicObjectUrl } from "./public-r2";
 import { serveObject } from "./r2";
@@ -13,17 +14,21 @@ function positiveInteger(value: string, fallback: number): number {
 }
 
 async function resolveAlias(
+  namespace: string,
+  repository: string,
   alias: Alias,
   asset: string,
   env: Env,
 ): Promise<string | null> {
   if (alias === "latest") {
-    const result = await fetchLatestFromDownloadRedirect(env, asset);
+    const result = await fetchLatestFromDownloadRedirect(repository, asset);
     return result.tag ?? null;
   }
-  const id = env.COORDINATOR.idFromName(`alias:${alias}`);
+  // One coordinator per namespace and alias: two mirrors must never share a
+  // resolved tag.
+  const id = env.COORDINATOR.idFromName(`alias:${namespace}:${alias}`);
   const response = await env.COORDINATOR.get(id).fetch(
-    `https://coordinator/resolve/${alias}?asset=${encodeURIComponent(asset)}`,
+    `https://coordinator/resolve/${alias}?namespace=${encodeURIComponent(namespace)}&asset=${encodeURIComponent(asset)}`,
   );
   if (response.status === 404) return null;
   if (!response.ok)
@@ -34,6 +39,8 @@ async function resolveAlias(
 
 async function aliasRedirect(
   request: Request,
+  namespace: string,
+  repository: string,
   alias: Alias,
   asset: string,
   env: Env,
@@ -48,9 +55,9 @@ async function aliasRedirect(
   }
   if (cached) await cache.delete(cacheKey);
 
-  const tag = await resolveAlias(alias, asset, env);
+  const tag = await resolveAlias(namespace, repository, alias, asset, env);
   if (!tag) return new Response("No matching release", { status: 404 });
-  const location = versionedPath(tag, asset);
+  const location = versionedPath(namespace, tag, asset);
   const edgeTtl = positiveInteger(env.EDGE_ALIAS_TTL_SECONDS, 60);
   const cacheHeaders = new Headers({
     "Access-Control-Allow-Origin": "*",
@@ -89,11 +96,28 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   const parsed = parseAssetPath(new URL(request.url).pathname);
-  if (!parsed) return new Response("Expected /{tag}/{asset}", { status: 404 });
-  const alias = asAlias(parsed.tag);
-  if (alias) return aliasRedirect(request, alias, parsed.asset, env);
+  if (!parsed)
+    return new Response("Expected /{namespace}/{tag}/{asset}", { status: 404 });
 
-  const key = objectKey(parsed.tag, parsed.asset);
+  const repository = resolveRepository(env, parsed.namespace);
+  if (!repository)
+    return new Response(`Unknown mirror "${parsed.namespace}"`, {
+      status: 404,
+    });
+
+  const alias = asAlias(parsed.tag);
+  if (alias) {
+    return aliasRedirect(
+      request,
+      parsed.namespace,
+      repository,
+      alias,
+      parsed.asset,
+      env,
+    );
+  }
+
+  const key = objectKey(parsed.namespace, parsed.tag, parsed.asset);
   const publicUrl = publicObjectUrl(env, key);
   if (publicUrl) {
     if (await env.ASSETS.head(key)) {
@@ -108,10 +132,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (request.method === "HEAD") {
-    const response = await fetch(downloadUrl(env, parsed.tag, parsed.asset), {
-      method: "HEAD",
-      redirect: "follow",
-    });
+    const response = await fetch(
+      downloadUrl(repository, parsed.tag, parsed.asset),
+      { method: "HEAD", redirect: "follow" },
+    );
     if (response.status === 404) return new Response(null, { status: 404 });
     if (!response.ok) return new Response(null, { status: 502 });
     const headers = new Headers();

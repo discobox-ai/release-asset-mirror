@@ -1,5 +1,7 @@
 import { downloadUrl, fetchAlias } from "./github";
-import type { Alias, AliasState, Env, FillRequest } from "./types";
+import { resolveRepository } from "./mirrors";
+import { asAlias } from "./path";
+import type { AliasState, Env, FillRequest } from "./types";
 
 function positiveInteger(value: string, fallback: number): number {
   const parsed = Number(value);
@@ -17,14 +19,25 @@ export class Coordinator implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname.startsWith("/resolve/")) {
-      const alias = url.pathname.slice("/resolve/".length);
-      if (alias !== "latest" && alias !== "prerelease")
+      const alias = asAlias(url.pathname.slice("/resolve/".length));
+      const namespace = url.searchParams.get("namespace");
+      if (!alias || !namespace)
         return new Response("Not found", { status: 404 });
-      return this.resolve(alias, url.searchParams.get("asset") ?? undefined);
+      // Resolve the repository here rather than trusting the caller: the map
+      // in the environment stays the only place a namespace is interpreted.
+      const repository = resolveRepository(this.env, namespace);
+      if (!repository) return new Response("Not found", { status: 404 });
+      return this.resolve(
+        repository,
+        alias,
+        url.searchParams.get("asset") ?? undefined,
+      );
     }
     if (request.method === "POST" && url.pathname === "/fill") {
       const input = await request.json<FillRequest>();
-      this.fillPromise ??= this.fill(input).finally(() => {
+      const repository = resolveRepository(this.env, input.namespace);
+      if (!repository) return new Response("Not found", { status: 404 });
+      this.fillPromise ??= this.fill(repository, input).finally(() => {
         this.fillPromise = undefined;
       });
       return this.fillPromise;
@@ -32,7 +45,11 @@ export class Coordinator implements DurableObject {
     return new Response("Not found", { status: 404 });
   }
 
-  private async resolve(alias: Alias, asset?: string): Promise<Response> {
+  private async resolve(
+    repository: string,
+    alias: "latest" | "prerelease",
+    asset?: string,
+  ): Promise<Response> {
     const now = Date.now();
     const ttl = positiveInteger(this.env.ALIAS_TTL_SECONDS, 60) * 1000;
     const cached = await this.state.storage.get<AliasState>("alias");
@@ -40,7 +57,13 @@ export class Coordinator implements DurableObject {
       return Response.json({ tag: cached.tag });
 
     try {
-      const result = await fetchAlias(alias, this.env, cached?.etag, asset);
+      const result = await fetchAlias(
+        repository,
+        alias,
+        this.env,
+        cached?.etag,
+        asset,
+      );
       if (result.notModified && cached) {
         const refreshed = { ...cached, checkedAt: now };
         await this.state.storage.put("alias", refreshed);
@@ -62,16 +85,15 @@ export class Coordinator implements DurableObject {
     }
   }
 
-  private async fill(input: FillRequest): Promise<Response> {
+  private async fill(
+    repository: string,
+    input: FillRequest,
+  ): Promise<Response> {
     if (await this.env.ASSETS.head(input.key))
       return new Response(null, { status: 204 });
 
-    const upstream = await fetch(
-      downloadUrl(this.env, input.tag, input.asset),
-      {
-        redirect: "follow",
-      },
-    );
+    const source = downloadUrl(repository, input.tag, input.asset);
+    const upstream = await fetch(source, { redirect: "follow" });
     if (upstream.status === 404)
       return new Response("Asset not found", { status: 404 });
     if (!upstream.ok || !upstream.body) {
@@ -91,8 +113,9 @@ export class Coordinator implements DurableObject {
     await this.env.ASSETS.put(input.key, upstream.body, {
       customMetadata: {
         cachedAt: new Date().toISOString(),
-        githubUrl: downloadUrl(this.env, input.tag, input.asset),
+        githubUrl: source,
         releaseTag: input.tag,
+        repository,
         ...(contentLength ? { sourceContentLength: contentLength } : {}),
       },
       httpMetadata: {

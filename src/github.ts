@@ -1,14 +1,5 @@
 import type { Alias, Env, GitHubRelease } from "./types";
 
-const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
-
-function repository(env: Env): string {
-  if (!REPOSITORY_PATTERN.test(env.GITHUB_REPOSITORY)) {
-    throw new Error("GITHUB_REPOSITORY must have the form owner/repository");
-  }
-  return env.GITHUB_REPOSITORY;
-}
-
 function githubHeaders(env: Env, etag?: string): Headers {
   const headers = new Headers({
     Accept: "application/vnd.github+json",
@@ -22,6 +13,7 @@ function githubHeaders(env: Env, etag?: string): Headers {
 }
 
 export async function fetchAlias(
+  repository: string,
   alias: Alias,
   env: Env,
   etag?: string,
@@ -30,12 +22,12 @@ export async function fetchAlias(
   const endpoint =
     alias === "latest" ? "/releases/latest" : "/releases?per_page=30";
   const response = await fetch(
-    `https://api.github.com/repos/${repository(env)}${endpoint}`,
+    `https://api.github.com/repos/${repository}${endpoint}`,
     { headers: githubHeaders(env, etag) },
   );
   if (response.status === 304) return { notModified: true };
   if (response.status === 403 && alias === "latest" && asset) {
-    return fetchLatestFromDownloadRedirect(env, asset);
+    return fetchLatestFromDownloadRedirect(repository, asset);
   }
   if (!response.ok)
     throw new Error(`GitHub releases API returned ${String(response.status)}`);
@@ -68,11 +60,11 @@ export async function fetchAlias(
 }
 
 export async function fetchLatestFromDownloadRedirect(
-  env: Env,
+  repository: string,
   asset: string,
 ): Promise<{ notModified: false; tag?: string }> {
   const response = await fetch(
-    `https://github.com/${repository(env)}/releases/latest/download/${encodeURIComponent(asset)}`,
+    `https://github.com/${repository}/releases/latest/download/${encodeURIComponent(asset)}`,
     { method: "HEAD", redirect: "manual" },
   );
   if (response.status === 404) return { notModified: false };
@@ -86,7 +78,7 @@ export async function fetchLatestFromDownloadRedirect(
   if (!location)
     throw new Error("GitHub latest release redirect omitted Location");
   const target = new URL(location, "https://github.com");
-  const [owner, repositoryName] = repository(env).split("/");
+  const [owner, repositoryName] = repository.split("/");
   const parts = target.pathname
     .split("/")
     .map((part) => decodeURIComponent(part));
@@ -105,6 +97,10 @@ export async function fetchLatestFromDownloadRedirect(
   return { notModified: false, tag: parts[5] };
 }
 
-export function downloadUrl(env: Env, tag: string, asset: string): string {
-  return `https://github.com/${repository(env)}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(asset)}`;
+export function downloadUrl(
+  repository: string,
+  tag: string,
+  asset: string,
+): string {
+  return `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(asset)}`;
 }

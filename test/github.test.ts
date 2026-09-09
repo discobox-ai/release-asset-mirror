@@ -3,10 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { downloadUrl, fetchAlias } from "../src/github";
 import type { Env } from "../src/types";
 
-const env = {
-  ALIAS_TTL_SECONDS: "60",
-  GITHUB_REPOSITORY: "example/tools",
-} as Env;
+const env = { ALIAS_TTL_SECONDS: "60" } as Env;
+const REPOSITORY = "example/tools";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -14,19 +12,9 @@ afterEach(() => {
 
 describe("GitHub release resolution", () => {
   it("constructs a repository-pinned download URL", () => {
-    expect(downloadUrl(env, "v1.2.0", "disk image.img")).toBe(
+    expect(downloadUrl(REPOSITORY, "v1.2.0", "disk image.img")).toBe(
       "https://github.com/example/tools/releases/download/v1.2.0/disk%20image.img",
     );
-  });
-
-  it("rejects an invalid configured repository", () => {
-    expect(() =>
-      downloadUrl(
-        { ...env, GITHUB_REPOSITORY: "https://example.com/open-proxy" },
-        "v1",
-        "asset",
-      ),
-    ).toThrow("owner/repository");
   });
 
   it("selects the newest published prerelease", async () => {
@@ -58,7 +46,7 @@ describe("GitHub release resolution", () => {
         ),
       ),
     );
-    await expect(fetchAlias("prerelease", env)).resolves.toEqual({
+    await expect(fetchAlias(REPOSITORY, "prerelease", env)).resolves.toEqual({
       etag: '"github-etag"',
       notModified: false,
       tag: "new",
@@ -74,7 +62,9 @@ describe("GitHub release resolution", () => {
         Promise.resolve(new Response(null, { status: 304 })),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await expect(fetchAlias("latest", env, '"old-etag"')).resolves.toEqual({
+    await expect(
+      fetchAlias(REPOSITORY, "latest", env, '"old-etag"'),
+    ).resolves.toEqual({
       notModified: true,
     });
     const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
@@ -97,7 +87,7 @@ describe("GitHub release resolution", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      fetchAlias("latest", env, undefined, "SHA256SUMS"),
+      fetchAlias(REPOSITORY, "latest", env, undefined, "SHA256SUMS"),
     ).resolves.toEqual({
       notModified: false,
       tag: "v1.3.0",
