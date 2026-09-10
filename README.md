@@ -65,7 +65,9 @@ and picks the most recently published release flagged as a prerelease. Draft
 releases are never visible.
 
 Anything that is not exactly `/{namespace}/{tag}/{asset}` is a `404`, as is an
-unknown namespace.
+unknown namespace. A failure outside the Worker — GitHub unreachable, a
+rate-limited `prerelease` lookup, a download that will not start — answers
+`502` and names the cause. A `500` means a bug in the Worker itself.
 
 ## Deploy your own
 
@@ -167,8 +169,10 @@ which cannot carry structured values.
 
 `latest` needs no token. `prerelease` does, in practice — GitHub has no public
 prerelease redirect, so it goes through the API and hits the anonymous rate
-limit quickly. Create a fine-grained token with public read access to the
-mirrored repositories and store it as a secret after the first deploy:
+limit quickly. Without a token, `prerelease` starts answering
+`502 GitHub releases API returned 403` once that limit is reached, while
+`latest` keeps working. Create a fine-grained token with public read access to
+the mirrored repositories and store it as a secret after the first deploy:
 
 ```sh
 npx wrangler secret put GITHUB_TOKEN

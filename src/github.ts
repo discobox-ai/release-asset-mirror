@@ -1,3 +1,4 @@
+import { UpstreamError } from "./errors";
 import type { Alias, Env, GitHubRelease } from "./types";
 
 function githubHeaders(env: Env, etag?: string): Headers {
@@ -30,7 +31,9 @@ export async function fetchAlias(
     return fetchLatestFromDownloadRedirect(repository, asset);
   }
   if (!response.ok)
-    throw new Error(`GitHub releases API returned ${String(response.status)}`);
+    throw new UpstreamError(
+      `GitHub releases API returned ${String(response.status)}`,
+    );
 
   const responseEtag = response.headers.get("ETag") ?? undefined;
   if (alias === "latest") {
@@ -69,14 +72,14 @@ export async function fetchLatestFromDownloadRedirect(
   );
   if (response.status === 404) return { notModified: false };
   if (response.status < 300 || response.status >= 400) {
-    throw new Error(
+    throw new UpstreamError(
       `GitHub latest release redirect returned ${String(response.status)}`,
     );
   }
 
   const location = response.headers.get("Location");
   if (!location)
-    throw new Error("GitHub latest release redirect omitted Location");
+    throw new UpstreamError("GitHub latest release redirect omitted Location");
   const target = new URL(location, "https://github.com");
   const [owner, repositoryName] = repository.split("/");
   const parts = target.pathname
@@ -92,7 +95,9 @@ export async function fetchLatestFromDownloadRedirect(
     parts[6] !== asset ||
     !parts[5]
   ) {
-    throw new Error("GitHub latest release returned an unexpected redirect");
+    throw new UpstreamError(
+      "GitHub latest release returned an unexpected redirect",
+    );
   }
   return { notModified: false, tag: parts[5] };
 }

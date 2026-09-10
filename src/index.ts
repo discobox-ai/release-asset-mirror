@@ -1,4 +1,5 @@
 import { Coordinator } from "./coordinator";
+import { UpstreamError } from "./errors";
 import { downloadUrl, fetchLatestFromDownloadRedirect } from "./github";
 import { resolveRepository } from "./mirrors";
 import { asAlias, objectKey, parseAssetPath, versionedPath } from "./path";
@@ -31,8 +32,13 @@ async function resolveAlias(
     `https://coordinator/resolve/${alias}?namespace=${encodeURIComponent(namespace)}&asset=${encodeURIComponent(asset)}`,
   );
   if (response.status === 404) return null;
-  if (!response.ok)
-    throw new Error(`Alias coordinator returned ${String(response.status)}`);
+  if (!response.ok) {
+    // The coordinator already decided what this failure is and said so. Forward
+    // that verdict; turning it into a bare throw would answer every upstream
+    // problem with an opaque 500 and lose the reason with it.
+    const reason = (await response.text()) || "Alias coordinator failed";
+    throw new UpstreamError(reason, response.status);
+  }
   const result = await response.json<{ tag: string }>();
   return result.tag;
 }
@@ -168,6 +174,10 @@ export default {
     try {
       return await handle(request, env);
     } catch (error) {
+      if (error instanceof UpstreamError) {
+        console.error("Upstream failure", error);
+        return new Response(error.message, { status: error.status });
+      }
       console.error("Unhandled request failure", error);
       return new Response("Internal error", { status: 500 });
     }
