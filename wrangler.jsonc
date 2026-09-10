@@ -61,22 +61,19 @@
   // ─── Additional deployments (`npm run deploy -- --env NAME`) ────────────
   // One block per extra mirror. Wrangler does not inherit `vars`,
   // `r2_buckets` or `durable_objects` into a named environment, so each one
-  // repeats them in full. `discobox` below is a live deployment kept here as
-  // a worked example — delete it in your own fork.
+  // repeats them in full. The `example` block below is a template, not a live
+  // deployment: it exists so `npm run check` bundles the named-environment
+  // path, and is safe to delete.
+  //
+  // Deployments we operate live in their own repository and depend on this
+  // one; see "Deploying from another repository" in the README.
   "env": {
-    "discobox": {
-      "name": "discobox-release-assets",
+    "example": {
+      "name": "release-asset-mirror-example",
       "workers_dev": false,
-      "routes": [
-        {
-          "pattern": "assets.discobox.ai",
-          "custom_domain": true,
-        },
-      ],
       "vars": {
         "REPOSITORIES": {
-          "discobox": "discobox-ai/discobox",
-          "rv64": "ibuildthecloud/rv64.js",
+          "example": "OWNER/REPOSITORY",
         },
         "ALIAS_TTL_SECONDS": "60",
         "EDGE_ALIAS_TTL_SECONDS": "60",
@@ -86,8 +83,7 @@
       "r2_buckets": [
         {
           "binding": "ASSETS",
-          "bucket_name": "discobox-release-assets",
-          "preview_bucket_name": "discobox-release-assets-dev",
+          "bucket_name": "release-asset-mirror-example",
         },
       ],
       "durable_objects": {

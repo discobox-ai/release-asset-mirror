@@ -139,8 +139,35 @@ environment, so each block repeats them in full:
 npx wrangler deploy --env staging
 ```
 
-The `discobox` environment in `wrangler.jsonc` is a live deployment kept as a
-worked example. Delete it in your own fork.
+The `example` environment in `wrangler.jsonc` is a template, not a live
+deployment. It exists so `npm run check` bundles the named-environment path,
+and is safe to delete.
+
+### Deploying from another repository
+
+Committing a real deployment's configuration here would make every fork
+inherit it. A deployment you operate is better kept in its own repository,
+depending on a pinned version of this one:
+
+```jsonc
+// package.json
+"dependencies": {
+  "release-asset-mirror": "github:discobox-ai/release-asset-mirror#v0.2.0"
+}
+```
+
+```ts
+// src/index.ts — the entry point wrangler bundles
+export { default, Coordinator } from "release-asset-mirror";
+```
+
+That repository's own `wrangler.jsonc` carries the Worker name, `REPOSITORIES`,
+routes and bucket, with `"main": "src/index.ts"`. Upgrading is a version bump
+in one file, and the deployed version is legible from the lockfile rather than
+from whoever last ran `deploy`.
+
+`Coordinator` must be re-exported: Wrangler resolves the Durable Object class
+from the entry point, and a deployment that omits it fails at bundle time.
 
 ### Deploying from CI
 

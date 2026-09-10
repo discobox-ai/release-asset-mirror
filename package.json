@@ -1,7 +1,6 @@
 {
   "name": "release-asset-mirror",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "type": "module",
   "description": "Cloudflare Worker that mirrors a GitHub repository's Release assets on a domain you control, with R2 as a read-through cache.",
   "license": "MIT",
@@ -13,10 +12,15 @@
     "url": "https://github.com/discobox-ai/release-asset-mirror/issues"
   },
   "homepage": "https://github.com/discobox-ai/release-asset-mirror#readme",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
   "scripts": {
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "deploy": "wrangler deploy --env=\"\"",
-    "deploy:discobox": "wrangler deploy --env discobox",
     "dev": "wrangler dev --env=\"\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
