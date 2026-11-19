@@ -1,6 +1,6 @@
 {
   "name": "release-asset-mirror",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Cloudflare Worker that mirrors a GitHub repository's Release assets on a domain you control, with R2 as a read-through cache.",
   "license": "MIT",
