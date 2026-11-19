@@ -54,20 +54,45 @@ describe("alias failures reach the caller intact", () => {
     );
   });
 
-  it("answers 502 when GitHub's latest-release redirect fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Promise.resolve(new Response(null, { status: 500 }))),
+  it("resolves latest through its own coordinator, never from the edge", async () => {
+    // A Cloudflare location that cannot reach github.com must still serve
+    // latest: the edge itself makes no request to GitHub.
+    const upstream = vi.fn(async () =>
+      Promise.resolve(new Response(null, { status: 429 })),
     );
+    vi.stubGlobal("fetch", upstream);
+    const coordinator = vi.fn(async (_url: string) =>
+      Promise.resolve(Response.json({ tag: "v1.4.0" })),
+    );
+    const idFromName = vi.fn(() => "coordinator-id");
+    const env = {
+      ...envWith(async () => Promise.resolve(new Response())),
+      COORDINATOR: { get: () => ({ fetch: coordinator }), idFromName },
+    } as unknown as Env;
+
+    const response = await handler.fetch(new Request(LATEST), env);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/tools/v1.4.0/disk.img");
+    expect(idFromName).toHaveBeenCalledWith("alias:tools:latest");
+    expect(coordinator.mock.calls[0]?.[0]).toBe(
+      "https://coordinator/resolve/latest?namespace=tools&asset=disk.img",
+    );
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("forwards the coordinator's 502 for latest", async () => {
     const env = envWith(async () =>
-      Promise.resolve(new Response(null, { status: 500 })),
+      Promise.resolve(
+        new Response("Unable to resolve release alias", { status: 502 }),
+      ),
     );
 
     const response = await handler.fetch(new Request(LATEST), env);
 
     expect(response.status).toBe(502);
     await expect(response.text()).resolves.toBe(
-      "GitHub latest release redirect returned 500",
+      "Unable to resolve release alias",
     );
   });
 

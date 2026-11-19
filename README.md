@@ -51,7 +51,7 @@ GET /tools/v1.4.0/disk.img
      └─ R2 miss ─► Coordinator DO (lock) ─► GitHub ─► put in R2 ─► serve
 
 GET /tools/latest/disk.img
-  └─ resolve tag via GitHub ─► 302 /tools/v1.4.0/disk.img  (cached at the edge)
+  └─ Coordinator DO resolves the tag ─► 302 /tools/v1.4.0/disk.img  (cached at the edge)
 ```
 
 Assets live in R2 under `releases/{namespace}/{tag}/{asset}`, so two mirrors
@@ -59,10 +59,17 @@ that publish the same tag never collide. Responses support `GET`, `HEAD`,
 `ETag`/`If-None-Match`, `Access-Control-Allow-Origin: *`, and single byte
 ranges.
 
-`latest` resolves through GitHub's public latest-download redirect, so it costs
-no API quota and sees only stable releases. `prerelease` uses the Releases API
-and picks the most recently published release flagged as a prerelease. Draft
-releases are never visible.
+`latest` is the release GitHub marks Latest (`GET /releases/latest`).
+`prerelease` is the most recently published release flagged as a prerelease.
+Draft releases are never visible.
+
+Both aliases resolve in one Durable Object per namespace and alias, never at
+the edge. It asks GitHub at most once per `ALIAS_TTL_SECONDS`, uses the token,
+and answers with the last tag it resolved when GitHub fails. The edge makes no
+request to GitHub for an alias: an anonymous request from a Cloudflare location
+can be refused by GitHub, and then every request served there would fail.
+Without a token, a `latest` lookup the API refuses falls back to GitHub's public
+latest-download redirect.
 
 Anything that is not exactly `/{namespace}/{tag}/{asset}` is a `404`, as is an
 unknown namespace. A failure outside the Worker — GitHub unreachable, a
@@ -194,11 +201,10 @@ which cannot carry structured values.
 
 ### GitHub token (optional, recommended)
 
-`latest` needs no token. `prerelease` does, in practice — GitHub has no public
-prerelease redirect, so it goes through the API and hits the anonymous rate
-limit quickly. Without a token, `prerelease` starts answering
+Both aliases go through the Releases API, which allows 60 anonymous requests an
+hour. Without a token, `prerelease` starts answering
 `502 GitHub releases API returned 403` once that limit is reached, while
-`latest` keeps working. Create a fine-grained token with public read access to
+`latest` falls back to GitHub's public latest-download redirect. Create a fine-grained token with public read access to
 the mirrored repositories and store it as a secret after the first deploy:
 
 ```sh

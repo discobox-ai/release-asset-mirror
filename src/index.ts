@@ -1,6 +1,6 @@
 import { Coordinator } from "./coordinator";
 import { UpstreamError } from "./errors";
-import { downloadUrl, fetchLatestFromDownloadRedirect } from "./github";
+import { downloadUrl } from "./github";
 import { resolveRepository } from "./mirrors";
 import { asAlias, objectKey, parseAssetPath, versionedPath } from "./path";
 import { publicObjectRedirect, publicObjectUrl } from "./public-r2";
@@ -16,15 +16,15 @@ function positiveInteger(value: string, fallback: number): number {
 
 async function resolveAlias(
   namespace: string,
-  repository: string,
   alias: Alias,
   asset: string,
   env: Env,
 ): Promise<string | null> {
-  if (alias === "latest") {
-    const result = await fetchLatestFromDownloadRedirect(repository, asset);
-    return result.tag ?? null;
-  }
+  // Both aliases resolve in the coordinator: once, with the token, and with
+  // the last good tag to fall back on. Resolving here instead would send an
+  // anonymous request to github.com from every Cloudflare location that sees
+  // a request, and a location GitHub refuses would fail outright.
+  //
   // One coordinator per namespace and alias: two mirrors must never share a
   // resolved tag.
   const id = env.COORDINATOR.idFromName(`alias:${namespace}:${alias}`);
@@ -46,7 +46,6 @@ async function resolveAlias(
 async function aliasRedirect(
   request: Request,
   namespace: string,
-  repository: string,
   alias: Alias,
   asset: string,
   env: Env,
@@ -61,7 +60,7 @@ async function aliasRedirect(
   }
   if (cached) await cache.delete(cacheKey);
 
-  const tag = await resolveAlias(namespace, repository, alias, asset, env);
+  const tag = await resolveAlias(namespace, alias, asset, env);
   if (!tag) return new Response("No matching release", { status: 404 });
   const location = versionedPath(namespace, tag, asset);
   const edgeTtl = positiveInteger(env.EDGE_ALIAS_TTL_SECONDS, 60);
@@ -113,14 +112,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   const alias = asAlias(parsed.tag);
   if (alias) {
-    return aliasRedirect(
-      request,
-      parsed.namespace,
-      repository,
-      alias,
-      parsed.asset,
-      env,
-    );
+    return aliasRedirect(request, parsed.namespace, alias, parsed.asset, env);
   }
 
   const key = objectKey(parsed.namespace, parsed.tag, parsed.asset);
